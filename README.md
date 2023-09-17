@@ -191,5 +191,5 @@ My gratitude also extends to University College Dublin for generously providing 
 
 ## Authors
 
-• Sarvesh Naik 
+- **Sarvesh Sairam Naik**
 
