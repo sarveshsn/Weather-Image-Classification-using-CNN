@@ -173,7 +173,7 @@ Drawing conclusions from our findings, it becomes evident that Model 2 has exhib
 
 ## Acknowledgement
 
-I wish to extend my heartfelt appreciation to Dr. Sarp Akcay for his invaluable guidance and unwavering support throughout the duration of the module at University College Dublin. The knowledge and insights he shared significantly contributed to the success of this project.
+I wish to extend my heartfelt appreciation to Dr. Sarp Akcay for his invaluable guidance and unwavering support. The knowledge and insights he shared significantly contributed to the success of this project.
 
 My gratitude also extends to University College Dublin for generously providing the essential resources that laid the foundation for the completion of this project. Their commitment to academic excellence has been instrumental in shaping the quality and depth of this endeavor.
 
