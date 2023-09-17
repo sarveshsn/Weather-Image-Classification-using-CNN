@@ -1,0 +1,610 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Load necessary libraries
+library(keras)
+library(jpeg)
+library(reticulate)
+library(ggplot2)
+library(grDevices)
+
+```
+
+```{r}
+#We load and display some of the pictures in the training set.
+# Define the path to the dataset directory
+weather <- "./weather"
+
+# Define the matrix containing selected image names for each class
+set <- matrix(c("2208", "4075", "3603", "6123", "0000", "1830", "11", "0592", "4930", "2919", "0832"), 11)
+
+# Define the list of class names
+class_names <- c("dew", "fogsmog", "frost", "glaze", "hail","lightning","rain","rainbow","rime","sandstorm","snow")
+
+# Plot
+par(mfrow = c(3, 4), mar = rep(0.5, 4))
+for (i in 1:11) {
+  class_name <- class_names[i]
+  path <- file.path(weather, "train", class_name, paste0(set[i, 1], ".jpg"))
+  img <- readJPEG(path, native = TRUE)
+  plot(0:1, 0:1, type = "n", ann = FALSE, axes = FALSE)
+  rasterImage(img, 0, 0, 1, 1)
+}
+
+```
+
+MODEL 1
+
+We now deploy our model. We specify a CNN with 4 convolution layers, interleaved by 4 max-pooling layers and then
+followed by 2 fully connected layers. The first convolution layer is set with 32 filters and a 3 × 3 kernel with strides 1 (default). The following 3 convolution layers are set with 64 and 128 filters with 3 × 3 kernels. All max-pooling layers have a pool size of 2 × 2, thus halving width and height at every pass. The fully connected layer uses 512 units and ReLU activation function. Note that no regularization is included.
+
+
+```{r}
+#define the CNN model
+model1 <- keras_model_sequential() %>%
+
+#Convolutional layers
+layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu",
+input_shape = c(64, 64, 3)) %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+#
+# fully connected layers
+layer_flatten() %>%
+layer_dense(units = 512, activation = "relu") %>%
+layer_dense(units = 11, activation = "softmax") %>%
+#
+# compile
+compile(
+loss = "categorical_crossentropy",
+metrics = "accuracy",
+optimizer = optimizer_rmsprop(learning_rate = 0.0001)
+)
+
+# Save the weights to an HDF5 file
+save_model_hdf5(model1, "model1.h5")
+
+summary(model1)
+
+```
+
+
+
+```{r}
+# Setting the train/test/validation directory
+train_dir <- "weather/train"
+validation_dir <- "weather/validation"
+test_dir <- "weather/test"
+
+train_datagen <- image_data_generator(rescale = 1/255)
+validation_datagen <- image_data_generator(rescale = 1/255)
+test_datagen <- image_data_generator(rescale= 1/255)
+
+train_generator <- flow_images_from_directory(
+train_dir,
+train_datagen,
+target_size = c(64, 64),
+batch_size = 60,
+class_mode = "categorical",
+shuffle=TRUE
+)
+
+
+validation_generator <- flow_images_from_directory(
+validation_dir,
+validation_datagen,
+target_size = c(64, 64),
+batch_size = 60,
+class_mode = "categorical"
+)
+
+test_generator <- flow_images_from_directory(
+test_dir,
+test_datagen,
+target_size = c(64, 64),
+batch_size = 60,
+class_mode = "categorical",
+shuffle=FALSE
+)
+
+
+```
+
+
+```{r}
+# Fit the model
+fit1 <- model1 %>% fit(
+  train_generator,
+  steps_per_epoch = 100,
+  epochs = 50,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+
+```
+
+```{r}
+
+# to add a smooth line to points
+smooth_line <- function(y) {
+  x <- 1:length(y)
+  out1 <- predict( loess(y ~ x) )
+  return(out1)
+}
+
+# check learning curves
+out1 <- cbind(fit1$metrics$accuracy,
+            fit1$metrics$val_accuracy,
+            fit1$metrics$loss,
+            fit1$metrics$val_loss)
+cols <- c("black", "dodgerblue3")
+par(mfrow = c(1,2))
+# accuracy
+matplot(out1[,1:2], pch = 19, ylab = "Accuracy", xlab = "Epochs",
+        col = adjustcolor(cols, 0.3),
+        log = "y")
+matlines(apply(out1[,1:2], 2, smooth_line), lty = 1, col = cols, lwd = 2)
+legend("bottomright", legend = c("Training", "Validation"),
+       fill = cols, bty = "n")
+
+# loss
+matplot(out1[,3:4], pch = 19, ylab = "Loss", xlab = "Epochs",
+        col = adjustcolor(cols, 0.3))
+matlines(apply(out1[,3:4], 2, smooth_line), lty = 1, col = cols, lwd = 2)
+legend("topright", legend = c("Training", "Validation"),
+       fill = cols, bty = "n")
+```
+```{r}
+
+# Evaluate the model on the test set
+scores <- model1 %>% evaluate_generator(test_generator, steps = test_generator$n)
+
+# Print the test set accuracy
+cat("Test set accuracy:", scores[2], "\n")
+
+
+```
+
+Model 2
+
+In this model, we have increased the number of filters in the convolutional layers, added batch normalization after each activation layer, and added dropout after each max pooling layer and dense layer. We have also varied the kernel size in the convolutional layers. We are using the Adam optimizer instead of RMSprop.
+    
+```{r}
+
+# define the CNN model
+model2 <- keras_model_sequential() %>%
+
+  # convolutional layers
+  layer_conv_2d(filters = 64, kernel_size = c(5, 5), activation = "relu", input_shape = c(64, 64, 3)) %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  layer_conv_2d(filters = 128, kernel_size = c(5, 5), activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  layer_conv_2d(filters = 256, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  layer_conv_2d(filters = 512, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  # fully connected layers
+  layer_flatten() %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.5) %>%
+  
+  layer_dense(units = 11, activation = "softmax") %>%
+
+  # compile
+  compile(
+    loss = "categorical_crossentropy",
+    metrics = "accuracy",
+    optimizer = optimizer_adam(learning_rate = 0.001)
+  )
+# Save the weights to an HDF5 file
+save_model_hdf5(model2, "model2.h5")
+
+
+
+```
+
+
+```{r}
+
+# Fit the model
+fit2 <- model2 %>% fit(
+  train_generator,
+  steps_per_epoch = 100,
+  epochs = 50,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+
+```
+
+```{r}
+
+# to add a smooth line to points
+smooth_line <- function(y) {
+  x <- 1:length(y)
+  out <- predict( loess(y ~ x) )
+  return(out)
+}
+
+# check learning curves
+out2 <- cbind(fit2$metrics$accuracy,
+            fit2$metrics$val_accuracy,
+            fit2$metrics$loss,
+            fit2$metrics$val_loss)
+cols <- c("black", "dodgerblue3")
+par(mfrow = c(1,2))
+# accuracy
+matplot(out2[,1:2], pch = 19, ylab = "Accuracy", xlab = "Epochs",
+        col = adjustcolor(cols, 0.3),
+        log = "y")
+matlines(apply(out2[,1:2], 2, smooth_line), lty = 1, col = cols, lwd = 2)
+legend("bottomright", legend = c("Training", "Validation"),
+       fill = cols, bty = "n")
+
+# loss
+matplot(out2[,3:4], pch = 19, ylab = "Loss", xlab = "Epochs",
+        col = adjustcolor(cols, 0.3))
+matlines(apply(out2[,3:4], 2, smooth_line), lty = 1, col = cols, lwd = 2)
+legend("topright", legend = c("Training", "Validation"),
+       fill = cols, bty = "n")
+```
+
+```{r}
+
+# Evaluate the model on the test set
+scores <- model2 %>% evaluate_generator(test_generator, steps = test_generator$n)
+
+# Print the test set accuracy
+cat("Test set accuracy:", scores[2], "\n")
+
+
+```
+
+Model 3
+
+Adding Data augmentation
+
+
+```{r}
+
+# set our data augmentation generator
+data_augment <- image_data_generator(
+rescale = 1/255,
+rotation_range = 40,
+width_shift_range = 0.2,
+height_shift_range = 0.2,
+shear_range = 0.2,
+zoom_range = 0.2,
+horizontal_flip = TRUE,
+fill_mode = "nearest"
+)
+
+# plot a couple of examples
+par(mfrow = c(2, 4), mar = rep(0.5, 4))
+
+img_array <- image_to_array(
+image_load("weather/train/dew/2236.jpg", target_size = c(64, 64))
+)
+img_array <- array_reshape(img_array, c(1, 64, 64, 3))
+augmentation_generator <- flow_images_from_data(
+img_array,
+generator = data_augment,
+batch_size = 1
+)
+for (i in 1:4) {
+batch <- generator_next(augmentation_generator)
+
+plot(as.raster(batch[1,,,]))
+}
+
+img_array <- image_to_array(
+image_load("weather/train/lightning/1859.jpg" ,target_size = c(64, 64))
+)
+img_array <- array_reshape(img_array, c(1, 64, 64, 3))
+augmentation_generator <- flow_images_from_data(
+img_array,
+generator = data_augment,
+batch_size = 1
+)
+for (i in 1:4) {
+batch <- generator_next(augmentation_generator)
+plot(as.raster(batch[1,,,]))
+}
+
+
+```
+
+```{r}
+
+#define the CNN model
+model3 <- keras_model_sequential() %>%
+
+
+  # convolutional layers
+  layer_conv_2d(filters = 64, kernel_size = c(5, 5), activation = "relu", input_shape = c(64, 64, 3)) %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  layer_conv_2d(filters = 128, kernel_size = c(5, 5), activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  layer_conv_2d(filters = 256, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  layer_conv_2d(filters = 512, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_dropout(rate = 0.25) %>%
+
+  # fully connected layers
+  layer_flatten() %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.5) %>%
+  
+  layer_dense(units = 11, activation = "softmax") %>%
+
+  # compile
+  compile(
+    loss = "categorical_crossentropy",
+    metrics = "accuracy",
+    optimizer = optimizer_adam(learning_rate = 0.001)
+  )
+
+# train data generator with data augmentation
+train_generator_aug <- flow_images_from_directory(
+train_dir,
+data_augment,
+target_size = c(64, 64),
+batch_size = 60,
+class_mode = "categorical"
+)
+
+validation_generator <- flow_images_from_directory(
+validation_dir,
+validation_datagen,
+target_size = c(64, 64),
+batch_size = 60,
+class_mode = "categorical"
+)
+
+test_generator <- flow_images_from_directory(
+test_dir,
+test_datagen,
+target_size = c(64, 64),
+batch_size = 60,
+class_mode = "categorical",
+shuffle=FALSE
+)
+
+# Save the weights to an HDF5 file
+save_model_hdf5(model3, "model3.h5")
+
+
+```
+
+
+```{r}
+# Fit the model
+fit3 <- model3 %>% fit(
+  train_generator_aug,
+  steps_per_epoch = 100,
+  epochs = 50,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+
+```
+
+```{r}
+# check accuracy learning curve
+out3 <- cbind(out1[,1:2],
+fit3$metrics$accuracy,
+fit3$metrics$val_accuracy,
+out1[,3:4],
+fit3$metrics$loss,
+fit3$metrics$val_loss)
+cols <- c("black", "dodgerblue3", "darkorchid4", "magenta")
+par(mfrow = c(1,2))
+#
+# accuracy
+matplot(out3[,1:4],
+pch = 19, ylab = "Accuracy", xlab = "Epochs",
+col = adjustcolor(cols, 0.3),
+log = "y")
+matlines(apply(out3[,1:4], 2, smooth_line), lty = 1, col = cols, lwd = 2)
+legend("bottomright", legend = c("Training", "Valid", "Aug_Training", "Aug_Valid"),
+fill = cols, bty = "n")
+#
+# loss
+matplot(out3[,5:8], pch = 19, ylab = "Loss", xlab = "Epochs",
+col = adjustcolor(cols, 0.3))
+matlines(apply(out3[,5:8], 2, smooth_line), lty = 1, col = cols, lwd = 2)
+legend("topright", legend = c("Training", "Valid", "Aug_Training", "Aug_Valid"),
+fill = cols, bty = "n")
+
+
+
+```
+
+```{r}
+
+# Evaluate the model on the test set
+scores <- model3 %>% evaluate_generator(test_generator, steps = test_generator$n)
+
+# Print the test set accuracy
+cat("Test set accuracy:", scores[2], "\n")
+
+```
+
+Evaluating Confusion Matrix of model with highest test set accuracy.
+
+```{r}
+# Load the saved weights for the best model
+model2 <- load_model_hdf5("model2.h5")
+
+test_steps <- as.integer(ceiling(test_generator$n / 60))
+test_preds <- predict(model1, test_generator, steps = test_steps, verbose = 1)
+
+
+# Convert predicted probabilities to class labels
+test_preds_class <- max.col(test_preds) - 1
+
+# Get the actual labels for the test set
+test_labels <- test_generator$classes
+
+# Create a confusion matrix
+conf_mat <- table(test_labels, test_preds_class)
+
+
+# Print out the confusion matrix
+print(conf_mat)
+
+print(class(conf_mat))
+str(conf_mat)
+
+```
+
+Evaluating other performance metrics
+
+```{r}
+
+# FOR MODEL 1
+
+
+# Load the saved weights for the best model
+model1 <- load_model_hdf5("model1.h5")
+
+test_steps <- as.integer(ceiling(test_generator$n/ 60))
+test_preds <- predict(model1, test_generator, steps = test_steps, verbose = 1)
+
+
+# Convert predicted probabilities to class labels
+test_preds_class <- max.col(test_preds) - 1
+
+# Get the actual labels for the test set
+test_labels <- test_generator$classes
+
+# Create a confusion matrix
+conf_mat <- table(test_labels, test_preds_class)
+
+
+conf_mat <- table(test_labels, test_preds_class)
+
+# Calculate precision, recall, and F1 score for each class
+precision <- diag(conf_mat) / colSums(conf_mat)
+recall <- diag(conf_mat) / rowSums(conf_mat)
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Print results
+for (i in 1:nrow(conf_mat)) {
+  cat("Class", i-1, "Precision:", round(precision[i], 3), "\tRecall:", round(recall[i], 3), "\tF1 score:", round(F1_score[i], 3), "\n")
+}
+
+# Calculate macro-averaged precision, recall, and F1 score
+macro_precision <- mean(precision)
+macro_recall <- mean(recall)
+macro_F1_score <- mean(F1_score)
+
+cat("\nMacro-averaged Precision:", round(macro_precision, 3), "\tMacro-averaged Recall:", round(macro_recall, 3), "\tMacro-averaged F1 score:", round(macro_F1_score, 3), "\n")
+
+
+
+```
+
+```{r}
+
+# For Model 2
+
+conf_mat <- table(test_labels, test_preds_class)
+
+# Calculate precision, recall, and F1 score for each class
+precision <- diag(conf_mat) / colSums(conf_mat)
+recall <- diag(conf_mat) / rowSums(conf_mat)
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Print results
+for (i in 1:nrow(conf_mat)) {
+  cat("Class", i-1, "Precision:", round(precision[i], 3), "\tRecall:", round(recall[i], 3), "\tF1 score:", round(F1_score[i], 3), "\n")
+}
+
+# Calculate macro-averaged precision, recall, and F1 score
+macro_precision <- mean(precision)
+macro_recall <- mean(recall)
+macro_F1_score <- mean(F1_score)
+
+cat("\nMacro-averaged Precision:", round(macro_precision, 3), "\tMacro-averaged Recall:", round(macro_recall, 3), "\tMacro-averaged F1 score:", round(macro_F1_score, 3), "\n")
+
+```
+
+```{r}
+
+# FOR MODEL 3
+
+
+# Load the saved weights for the best model
+model3 <- load_model_hdf5("model3.h5")
+
+test_steps <- as.integer(ceiling(test_generator$n / 60))
+test_preds <- predict(model3, test_generator, steps = test_steps, verbose = 1)
+
+
+# Convert predicted probabilities to class labels
+test_preds_class <- max.col(test_preds) - 1
+
+# Get the actual labels for the test set
+test_labels <- test_generator$classes
+
+# Create a confusion matrix
+conf_mat <- table(test_labels, test_preds_class)
+
+
+conf_mat <- table(test_labels, test_preds_class)
+
+# Calculate precision, recall, and F1 score for each class
+precision <- diag(conf_mat) / colSums(conf_mat)
+recall <- diag(conf_mat) / rowSums(conf_mat)
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Print results
+for (i in 1:nrow(conf_mat)) {
+  cat("Class", i-1, "Precision:", round(precision[i], 3), "\tRecall:", round(recall[i], 3), "\tF1 score:", round(F1_score[i], 3), "\n")
+}
+
+# Calculate macro-averaged precision, recall, and F1 score
+macro_precision <- mean(precision)
+macro_recall <- mean(recall)
+macro_F1_score <- mean(F1_score)
+
+cat("\nMacro-averaged Precision:", round(macro_precision, 3), "\tMacro-averaged Recall:", round(macro_recall, 3), "\tMacro-averaged F1 score:", round(macro_F1_score, 3), "\n")
+
+
+```
+
+
