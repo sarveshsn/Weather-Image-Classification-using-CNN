@@ -6,16 +6,10 @@ As a solution, the integration of Convolutional Neural Networks (CNNs) into weat
 
 ## Folder Structure
 ```
-
-Literature Review.pdf
-Weather_Image_Classification.pdf (Presentation)
-
-Code/
 ├─ Data_preparation.R
 ├─ Training.Rmd
 
 README.md
-Code_of_Conduct.md
 
 ```
 ## Installing R and RStudio
