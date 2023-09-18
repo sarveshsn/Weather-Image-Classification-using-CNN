@@ -1,5 +1,7 @@
 # Weather-Image-Classification-using-CNN
 
+### Year : 2023
+
 Weather Image Classification holds significant significance in the realms of meteorology and computer vision, offering far-reaching implications that span a diverse array of activities, including weather forecasting, environmental monitoring, and disaster preparedness. The prevailing techniques predominantly hinge on human interpretations, a factor that can potentially introduce inaccuracies and uncertainties. This underscores the pressing need for more advanced methodologies.
 
 As a solution, the integration of Convolutional Neural Networks (CNNs) into weather image classification has emerged as a robust and pragmatic approach. In this project, our primary objective is to develop an image classifier capable of categorizing diverse weather images. With the aid of this image classifier, predictions about the prevailing weather conditions can be rapidly and accurately made based on input images. This marks a significant advancement over traditional approaches, enhancing both efficiency and accuracy.
