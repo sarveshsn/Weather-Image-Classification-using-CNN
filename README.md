@@ -191,7 +191,10 @@ My gratitude also extends to University College Dublin for generously providing 
 
 5. Haixia Xiao, Feng Zhang, Zhongping Shen, Kun Wu, and Jinglin Zhang. "Classification of Weather Phenomenon from Images by Using Deep Convolutional Neural Network." Earth and Space Science, 8, 2021.
 
-## Authors
+## License
+This project is open-source and available under the [MIT License](LICENSE).
 
-- **Sarvesh Sairam Naik**
+---
 
+**Author:** Sarvesh Sairam Naik  
+**GitHub Repository:** [GitHub Link](https://github.com/sarveshsn)
